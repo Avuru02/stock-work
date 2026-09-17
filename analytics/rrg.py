@@ -6,8 +6,7 @@ import pandas as pd
 
 from config import (
     BENCHMARK,
-    RRG_TRAIL_STEPS,
-    RRG_TRAIL_STRIDE,
+    RRG_TRAIL_DAYS,
     RRG_WINDOW,
     SECTOR_ETFS,
     SECTOR_LABELS,
@@ -78,8 +77,7 @@ def compute_rrg_from_close(
                 "quadrant": _quadrant(float(last["rs_ratio"]), float(last["rs_momentum"])),
             }
         )
-        stride_points = valid.iloc[::-RRG_TRAIL_STRIDE][::-1].tail(RRG_TRAIL_STEPS)
-        for date, point in stride_points.iterrows():
+        for date, point in valid.tail(RRG_TRAIL_DAYS).iterrows():
             trail_rows.append(
                 {
                     "etf": ticker,

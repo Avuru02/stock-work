@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from config import CMF_WINDOW, SECTOR_ETFS, SECTOR_LABELS
+from config import CMF_WINDOW, REL_DVOL_SMOOTH, SECTOR_ETFS, SECTOR_LABELS
 from data.prices import pivot_field
 
 
@@ -40,6 +40,7 @@ def ticker_flow_metrics(prices: pd.DataFrame, tickers: list[str], window: int = 
         ).sum().replace(0, np.nan)
         avg_dvol = dollar_vol.rolling(window, min_periods=window).mean()
         rel_dvol = dollar_vol / avg_dvol.replace(0, np.nan)
+        rel_dvol_smooth = rel_dvol.rolling(REL_DVOL_SMOOTH, min_periods=max(3, REL_DVOL_SMOOTH // 2)).mean()
         flow_proxy = mfv.rolling(window, min_periods=window).sum()
         last_idx = c.dropna().index[-1] if c.dropna().shape[0] else None
         if last_idx is None:
@@ -48,7 +49,10 @@ def ticker_flow_metrics(prices: pd.DataFrame, tickers: list[str], window: int = 
             {
                 "ticker": ticker,
                 "dollar_volume": float(dollar_vol.loc[last_idx]),
-                "rel_dollar_volume": float(rel_dvol.loc[last_idx]) if pd.notna(rel_dvol.loc[last_idx]) else np.nan,
+                "rel_dollar_volume": float(rel_dvol_smooth.loc[last_idx])
+                if pd.notna(rel_dvol_smooth.loc[last_idx])
+                else np.nan,
+                "rel_dollar_volume_1d": float(rel_dvol.loc[last_idx]) if pd.notna(rel_dvol.loc[last_idx]) else np.nan,
                 "cmf": float(cmf.loc[last_idx]) if pd.notna(cmf.loc[last_idx]) else np.nan,
                 "flow_proxy": float(flow_proxy.loc[last_idx]) if pd.notna(flow_proxy.loc[last_idx]) else np.nan,
             }
@@ -100,13 +104,17 @@ def grouped_constituent_flow(
         ).sum().replace(0, np.nan)
         avg_dvol = dvol_sum.rolling(window, min_periods=min_periods).mean()
         rel_dvol = dvol_sum / avg_dvol.replace(0, np.nan)
+        rel_dvol_smooth = rel_dvol.rolling(REL_DVOL_SMOOTH, min_periods=max(3, REL_DVOL_SMOOTH // 2)).mean()
         last_idx = dvol_sum.dropna().index[-1]
         rows.append(
             {
                 id_column: group_id,
                 "sector": labels.get(group_id, group_id),
                 "cmf": float(stock_cmf.loc[last_idx]) if pd.notna(stock_cmf.loc[last_idx]) else np.nan,
-                "rel_dollar_volume": float(rel_dvol.loc[last_idx]) if pd.notna(rel_dvol.loc[last_idx]) else np.nan,
+                "rel_dollar_volume": float(rel_dvol_smooth.loc[last_idx])
+                if pd.notna(rel_dvol_smooth.loc[last_idx])
+                else np.nan,
+                "rel_dollar_volume_1d": float(rel_dvol.loc[last_idx]) if pd.notna(rel_dvol.loc[last_idx]) else np.nan,
                 "dollar_volume": float(dvol_sum.loc[last_idx]),
                 "flow_proxy": float(mfv_sum.rolling(window, min_periods=min_periods).sum().loc[last_idx]),
                 "n_stocks": len(names),

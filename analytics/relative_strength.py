@@ -39,6 +39,11 @@ def relative_strength(
                 bench_ret = float(bench.iloc[-1] / bench.iloc[-1 - periods] - 1)
             row[f"ret_{name}"] = abs_ret
             row[f"rs_{name}"] = abs_ret - bench_ret
+        window = HORIZONS["1m"]
+        lookback = window
+        rs_m = series.pct_change(window) - bench.pct_change(window)
+        tail = rs_m.dropna().tail(lookback)
+        row["persist_1m"] = float((tail > 0).mean()) if len(tail) else float("nan")
         rows.append(row)
 
     frame = pd.DataFrame(rows)

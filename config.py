@@ -123,22 +123,39 @@ RRG_WINDOW = 21
 CMF_WINDOW = 20
 MA_WINDOW = 50
 BREADTH_HIGH_LOW_WINDOW = 20
-RRG_TRAIL_STEPS = 5
-RRG_TRAIL_STRIDE = 5  # plot a trail point every N trading days
+RRG_TRAIL_DAYS = 63  # daily RRG history stored for the dashboard slider
 DOWNLOAD_CHUNK_SIZE = 50
 CACHE_MAX_AGE_HOURS = 18
 
-# Percentile ranks of these components are blended into a 0-100 rotation score.
+# Pressure score is a 0-100 blend of *absolute* vs-SPY readings (50 = in line
+# with SPY). Percentile ranks are not used: being the least-bad sector does not
+# inflate the score. Inflow/Outflow still require confirmation gates.
 SCORE_WEIGHTS: dict[str, float] = {
-    "rs_1m": 0.25,
-    "rs_momentum": 0.20,
-    "volume_expansion": 0.20,
-    "cmf": 0.20,
+    "rs_1m": 0.20,
+    "rs_1w": 0.10,
+    "rs_momentum": 0.15,
+    "volume_signed": 0.15,
+    "cmf": 0.15,
     "breadth": 0.15,
+    "persist_1m": 0.10,
 }
 
-INFLOW_THRESHOLD = 60.0
-OUTFLOW_THRESHOLD = 40.0
+# tanh scales: 0 maps to 50, about ±scale maps to 12 / 88.
+RS_1M_SCORE_SCALE = 0.05  # 5pp vs SPY over 21 sessions is strong
+RS_1W_SCORE_SCALE = 0.02
+RRG_MOM_SCORE_SCALE = 2.0  # RRG momentum points away from 100
+VOL_SCORE_SCALE = 1.2  # signed relative dollar volume
+REL_DVOL_SMOOTH = 5  # sessions; last-print volume is too noisy
+
+INFLOW_THRESHOLD = 55.0
+OUTFLOW_THRESHOLD = 45.0
+CONFIRM_NEEDED = 4
+PERSIST_LOOKBACK = 21
+NARROW_PENALTY = 12.0
+BREADTH_CONFIRM = 0.50  # majority of names beating SPY; required for Inflow, not optional
+NARROW_BREADTH = 0.40
+BROAD_BREADTH = 0.60
+PERSIST_CONFIRM = 0.55
 
 SP500_WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 WIKI_USER_AGENT = "SectorRotationDashboard/1.0 (research; local dashboard)"

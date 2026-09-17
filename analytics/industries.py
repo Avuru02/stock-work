@@ -7,7 +7,7 @@ import pandas as pd
 from analytics.breadth import grouped_breadth, grouped_leaders
 from analytics.money_flow import grouped_constituent_flow
 from analytics.relative_strength import relative_strength
-from analytics.rotation_score import composite_score
+from analytics.rotation_score import composite_score, rotation_narrative
 from analytics.rrg import compute_rrg_from_close
 from config import BENCHMARK, HORIZONS, INDUSTRY_GROUPS, INDUSTRY_LABELS, SECTOR_LABELS
 from data.prices import pivot_field
@@ -127,11 +127,20 @@ def compute_industry_rotation(
     flow = grouped_constituent_flow(stock_prices, groups, labels)
     index_ret_1m = {}
     one_m = HORIZONS["1m"]
+    spy = close[BENCHMARK].dropna() if BENCHMARK in close.columns else pd.Series(dtype=float)
+    spy_ret_1m = float(spy.iloc[-1] / spy.iloc[-1 - one_m] - 1) if len(spy) > one_m else None
     for group_id in groups:
         series = close[group_id].dropna()
         if len(series) > one_m:
             index_ret_1m[group_id] = float(series.iloc[-1] / series.iloc[-1 - one_m] - 1)
-    breadth = grouped_breadth(stock_prices, groups, labels, index_ret_1m=index_ret_1m, extra=extras)
+    breadth = grouped_breadth(
+        stock_prices,
+        groups,
+        labels,
+        index_ret_1m=index_ret_1m,
+        extra=extras,
+        spy_ret_1m=spy_ret_1m,
+    )
     scored = composite_score(rs, rrg_latest, flow, breadth)
     if "parent_etf" not in scored.columns and not rs.empty:
         scored = scored.merge(rs[["etf", "parent_etf"]], on="etf", how="left")
@@ -150,25 +159,26 @@ def compute_industry_rotation(
             INDUSTRY_LABELS[group_id],
         )
 
-    inflow = scored[scored["flow_bucket"] == "Inflow"]
-    outflow = scored[scored["flow_bucket"] == "Outflow"]
-    into = ", ".join(inflow["sector"].head(3).tolist()) or "no group"
-    out_of = ", ".join(outflow["sector"].head(3).tolist()) or "no group"
-    leader = scored.iloc[0]
-    narrative = (
-        f"Among industry groups, estimated pressure is strongest in {into} "
-        f"and weakest in {out_of}. {leader['sector']} ranks first "
-        f"({leader['score']:.0f}, {leader['quadrant']})."
-    )
+    narrative = rotation_narrative(scored, noun="industry group")
     tech = scored[scored["parent_etf"] == "XLK"]
     if len(tech) >= 2:
-        ordered = tech.sort_values("score", ascending=False)
-        leader = ordered.iloc[0]
-        laggard = ordered.iloc[-1]
-        if leader["etf"] != laggard["etf"]:
+        confirmed = tech[tech["flow_bucket"] == "Inflow"]
+        weakest = tech.sort_values("score").iloc[0]
+        if not confirmed.empty:
+            leader = confirmed.iloc[0]
+            if leader["etf"] != weakest["etf"]:
+                narrative += (
+                    f" Inside Technology, {leader['sector']} is a confirmed inflow; "
+                    f"{weakest['sector']} is weakest on pressure "
+                    f"({leader['score']:.0f} vs {weakest['score']:.0f})."
+                )
+        else:
+            strongest = tech.sort_values("score", ascending=False).iloc[0]
             narrative += (
-                f" Inside Technology, {leader['sector']} is ahead of {laggard['sector']} "
-                f"({leader['score']:.0f} vs {laggard['score']:.0f})."
+                f" Inside Technology, no subgroup is a confirmed inflow; "
+                f"{strongest['sector']} has the highest pressure "
+                f"({strongest['score']:.0f}) vs {weakest['sector']} "
+                f"({weakest['score']:.0f})."
             )
 
     return {

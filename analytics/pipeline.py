@@ -23,9 +23,9 @@ def build_dashboard_data(force: bool = False) -> dict:
     etf_flow = etf_money_flow(etf_prices)
     stock_flow = sector_constituent_flow(stock_prices, universe)
     breadth = sector_breadth(stock_prices, universe, etf_prices)
-    scored = composite_score(rs, rrg_latest, etf_flow, breadth)
+    flow_for_score = etf_flow.copy()
     if not stock_flow.empty:
-        scored = scored.merge(
+        flow_for_score = flow_for_score.merge(
             stock_flow[
                 [
                     "etf",
@@ -38,6 +38,7 @@ def build_dashboard_data(force: bool = False) -> dict:
             on="etf",
             how="left",
         )
+    scored = composite_score(rs, rrg_latest, flow_for_score, breadth)
 
     leaders = {}
     for etf in SECTOR_ETFS.values():

@@ -8,22 +8,25 @@ import pandas as pd
 from config import (
     BENCHMARK,
     BREADTH_HIGH_LOW_WINDOW,
+    BROAD_BREADTH,
     HORIZONS,
     MA_WINDOW,
+    NARROW_BREADTH,
     SECTOR_ETFS,
     SECTOR_LABELS,
 )
 from data.prices import pivot_field
 
 
-def _leadership_label(etf_1m: float, pct_up_1m: float) -> str:
-    if pd.isna(etf_1m) or pd.isna(pct_up_1m):
+def _leadership_label(rs_1m: float, pct_beat_spy: float) -> str:
+    """Participation vs SPY, not vs zero — a bull market makes almost every name green."""
+    if pd.isna(rs_1m) or pd.isna(pct_beat_spy):
         return "Unknown"
-    if etf_1m > 0 and pct_up_1m < 0.40:
+    if rs_1m > 0 and pct_beat_spy < NARROW_BREADTH:
         return "Narrow"
-    if etf_1m > 0 and pct_up_1m >= 0.60:
+    if rs_1m > 0 and pct_beat_spy >= BROAD_BREADTH:
         return "Broad"
-    if etf_1m <= 0 and pct_up_1m <= 0.40:
+    if rs_1m <= 0 and pct_beat_spy <= NARROW_BREADTH:
         return "Broad weakness"
     return "Mixed"
 
@@ -34,6 +37,7 @@ def grouped_breadth(
     labels: dict[str, str],
     index_ret_1m: dict[str, float] | None = None,
     extra: dict[str, dict] | None = None,
+    spy_ret_1m: float | None = None,
     ma_window: int = MA_WINDOW,
     high_low_window: int = BREADTH_HIGH_LOW_WINDOW,
 ) -> pd.DataFrame:
@@ -57,7 +61,16 @@ def grouped_breadth(
         else:
             ret_1m = pd.Series(index=names, dtype=float)
         pct_up = float((ret_1m > 0).mean()) if len(ret_1m) else np.nan
+        if spy_ret_1m is None or pd.isna(spy_ret_1m) or len(ret_1m) == 0:
+            pct_beat = pct_up
+        else:
+            pct_beat = float((ret_1m > spy_ret_1m).mean())
         group_1m = np.nan if not index_ret_1m else index_ret_1m.get(group_id, np.nan)
+        group_rs = (
+            group_1m - spy_ret_1m
+            if spy_ret_1m is not None and pd.notna(spy_ret_1m) and pd.notna(group_1m)
+            else group_1m
+        )
         row = {
             "etf": group_id,
             "sector": labels.get(group_id, group_id),
@@ -66,8 +79,9 @@ def grouped_breadth(
             "new_highs_20": new_highs,
             "new_lows_20": new_lows,
             "pct_up_1m": pct_up,
+            "pct_beat_spy": pct_beat,
             "etf_ret_1m": group_1m,
-            "leadership": _leadership_label(group_1m, pct_up),
+            "leadership": _leadership_label(group_rs, pct_beat),
         }
         if extra and group_id in extra:
             row.update(extra[group_id])
@@ -105,8 +119,16 @@ def sector_breadth(
             ret_1m = pd.Series(index=names, dtype=float)
         pct_up = float((ret_1m > 0).mean()) if len(ret_1m) else np.nan
         etf_1m = np.nan
+        spy_ret = np.nan
         if etf in etf_close.columns and len(etf_close) > one_m:
             etf_1m = float(etf_close[etf].iloc[-1] / etf_close[etf].iloc[-1 - one_m] - 1)
+        if BENCHMARK in etf_close.columns and len(etf_close) > one_m:
+            spy_ret = float(etf_close[BENCHMARK].iloc[-1] / etf_close[BENCHMARK].iloc[-1 - one_m] - 1)
+        if pd.isna(spy_ret) or len(ret_1m) == 0:
+            pct_beat = pct_up
+        else:
+            pct_beat = float((ret_1m > spy_ret).mean())
+        etf_rs = etf_1m - spy_ret if pd.notna(etf_1m) and pd.notna(spy_ret) else etf_1m
         rows.append(
             {
                 "etf": etf,
@@ -117,8 +139,9 @@ def sector_breadth(
                 "new_highs_20": new_highs,
                 "new_lows_20": new_lows,
                 "pct_up_1m": pct_up,
+                "pct_beat_spy": pct_beat,
                 "etf_ret_1m": etf_1m,
-                "leadership": _leadership_label(etf_1m, pct_up),
+                "leadership": _leadership_label(etf_rs, pct_beat),
             }
         )
     return pd.DataFrame(rows)
